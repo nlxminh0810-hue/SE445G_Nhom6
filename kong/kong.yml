@@ -1,0 +1,50 @@
+# ============================================================
+# PHẦN CỦA PHÁT: Kong API Gateway (Declarative Configuration)
+# Nhiệm vụ: Route Request, Rate Limiting, Correlation ID, JWT Auth
+# ============================================================
+_format_version: "2.1"
+
+services:
+  - name: integration-service
+    # Trỏ xuống container hoặc service backend thực tế
+    url: http://integration-service:4000
+    connect_timeout: 60000
+    read_timeout: 60000
+    write_timeout: 60000
+    routes:
+      - name: api-routes
+        paths:
+          - /api/v1
+        strip_path: false
+    plugins:
+      # Plugin 1: Tự động đính kèm X-Correlation-Id phục vụ Distributed Tracing
+      - name: correlation-id
+        config: 
+          header_name: X-Correlation-Id
+          generator: uuid
+          echo_downstream: true
+
+      # Plugin 2: Rate Limiting chống spam/DDoS (20 request mỗi phút từ 1 IP)
+      - name: rate-limiting
+        config: 
+          minute: 20
+          policy: local
+          limit_by: ip
+          fault_tolerant: true
+          hide_client_headers: false
+
+      # Plugin 3: JWT - Chặn mọi request không có Token hợp lệ
+      - name: jwt
+        config:
+          claims_to_verify: 
+            - exp
+          run_on_preflight: true
+          maximum_expiration: 3600 # 1 tiếng
+
+consumers:
+  - username: ecommerce-web-client
+    jwt_secrets:
+      - key: ecommerce-web-client
+        # Secret này dùng để backend dashboard ký (sign) JWT
+        secret: doi-thanh-chuoi-bi-mat-cua-nhom-phat-deptrai
+        algorithm: HS256
